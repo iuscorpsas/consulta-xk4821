@@ -120,6 +120,9 @@ async function decrypt(p, pass) {
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(p.iv) }, key, b64d(p.ct));
   return JSON.parse(new TextDecoder().decode(pt));
 }
+const idb = () => new Promise((ok, no) => { const q = indexedDB.open('consulta-pasf', 1); q.onupgradeneeded = () => q.result.createObjectStore('k'); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
+const idbGet = async k => { try { const d = await idb(); return await new Promise(r => { const q = d.transaction('k').objectStore('k').get(k); q.onsuccess = () => r(q.result); q.onerror = () => r(null); }); } catch (e) { return null; } };
+const idbSet = async (k, v) => { try { const d = await idb(); await new Promise(r => { const t = d.transaction('k', 'readwrite'); if (v === null) t.objectStore('k').delete(k); else t.objectStore('k').put(v, k); t.oncomplete = r; t.onerror = r; }); return true; } catch (e) { return false; } };
 function readPayload(txt) {
   const m = txt.match(/<script[^>]*id="payload"[^>]*>([\s\S]*?)<\/script>/);
   return JSON.parse(m ? m[1] : txt);
@@ -134,19 +137,26 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) S.hid
 $('#lock').onclick = lock;
 $('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.tab = b.dataset.t; [...$('#tabs').children].forEach(x => x.classList.toggle('on', x === b)); render(); };
 
-function viewUnlock(msg) {
-  $('#app').innerHTML = `<div class="card"><p><b>Solo consulta.</b> Elige el archivo de datos y escribe tu clave. Nada se guarda en el teléfono ni se envía a internet.</p>
-  <p><input type="file" id="fl"></p><p><input type="password" id="pw" placeholder="Clave" autocomplete="off"></p>
-  <p class="err" id="er">${esc(msg || '')}</p><button class="pri" id="go">Abrir</button><p class="mut" id="fi"></p></div>
-  <p class="mut" style="padding:0 6px">El archivo es el mismo <i>Control_Sancionatorios.html</i> que guardas en la USB (puedes subirlo a tu OneDrive y elegirlo desde aquí). La app se bloquea sola tras 2 minutos fuera de ella.</p>`;
-  $('#fl').onchange = () => { const f = $('#fl').files[0]; $('#fi').textContent = f ? f.name + ' · ' + (f.size / 1048576).toFixed(1) + ' MB' : ''; };
+async function viewUnlock(msg) {
+  const sv = await idbGet('datos');
+  $('#app').innerHTML = `<div class="card"><p><b>Solo consulta.</b> ${sv ? 'Usando el archivo guardado en este teléfono (cifrado). Escribe tu clave.' : 'Elige el archivo de datos y escribe tu clave. Nada se envía a internet.'}</p>
+  ${sv ? `<p class="mut">Archivo guardado el ${esc(sv.mod || '—')} · ${esc(sv.name || '')}</p>` : ''}
+  <p id="flw" ${sv ? 'hidden' : ''}><input type="file" id="fl"></p><p><input type="password" id="pw" placeholder="Clave" autocomplete="off"></p>
+  <p class="err" id="er">${esc(msg || '')}</p><button class="pri" id="go">Abrir</button>
+  ${sv ? '<p><button class="back" id="chg">Cambiar archivo</button> · <button class="back" id="forget">Olvidar archivo guardado</button></p>' : ''}<p class="mut" id="fi"></p></div>
+  <p class="mut" style="padding:0 6px">El archivo es el mismo <i>Control_Sancionatorios.html</i> de la USB. Se guarda en este teléfono solo cifrado con tu clave; la clave nunca se guarda. La app se bloquea sola tras 2 minutos fuera de ella.</p>`;
+  const fl = $('#fl'); if (fl) fl.onchange = () => { const f = fl.files[0]; $('#fi').textContent = f ? f.name + ' · ' + (f.size / 1048576).toFixed(1) + ' MB' : ''; };
+  if (sv) { $('#chg').onclick = () => { $('#flw').hidden = false; sv.use = false; $('#chg').hidden = true; }; $('#forget').onclick = async () => { await idbSet('datos', null); viewUnlock('Archivo guardado eliminado de este teléfono.'); }; }
   $('#go').onclick = async () => {
-    const f = $('#fl').files[0], pw = $('#pw').value; if (!f) return void ($('#er').textContent = 'Elige primero el archivo.'); if (!pw) return void ($('#er').textContent = 'Escribe la clave.');
+    const f = fl && fl.files[0], pw = $('#pw').value, useSaved = sv && sv.use !== false && !f;
+    if (!useSaved && !f) return void ($('#er').textContent = 'Elige primero el archivo.'); if (!pw) return void ($('#er').textContent = 'Escribe la clave.');
     $('#go').disabled = true; $('#er').textContent = 'Descifrando…';
     try {
-      const p = readPayload(await f.text()); const d = p.enc ? await decrypt(p, pw) : p;
+      const raw = useSaved ? sv.payload : await f.text(); const p = readPayload(raw); const d = p.enc ? await decrypt(p, pw) : p;
       if (!d || !d.modules) throw new Error('formato');
-      S.file = f.lastModified ? new Date(f.lastModified).toLocaleString('es-CO') : ''; load(d); $('#pw').value = '';
+      const mod = useSaved ? sv.mod : (f.lastModified ? new Date(f.lastModified).toLocaleString('es-CO') : '');
+      if (!useSaved && p.enc) await idbSet('datos', { payload: JSON.stringify(p), mod, name: f.name });
+      S.file = mod; load(d); $('#pw').value = '';
       S.tab = 'home'; [...$('#tabs').children].forEach((x, i) => x.classList.toggle('on', i === 0)); $('#tabs').hidden = false; $('#lock').hidden = false; render();
     } catch (e) { $('#go').disabled = false; $('#er').textContent = e && e.name === 'OperationError' ? 'Clave incorrecta.' : 'No pude leer ese archivo (¿es el archivo de datos correcto?).'; }
   };

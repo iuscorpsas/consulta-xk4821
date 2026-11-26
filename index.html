@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Consulta PASF">
+<meta name="theme-color" content="#1F3864"><meta name="robots" content="noindex,nofollow">
+<link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><link rel="icon" href="icon-192.png">
+<title>Consulta PASF</title>
+<style>
+:root{--bg:#f3f4f7;--card:#fff;--tx:#1b1f27;--mut:#667085;--ln:#e2e5ec;--pri:#1F3864;--acc:#2f6fed}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--card:#1a202b;--tx:#e9edf4;--mut:#9aa6b8;--ln:#2a3342;--pri:#8fb0ff;--acc:#6e9bff}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font:16px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx);padding-top:env(safe-area-inset-top)}
+header.top{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:8px}
+@media(prefers-color-scheme:dark){header.top{background:#1a2a4d;color:#e9edf4}}
+header.top h1{font-size:17px;margin:0;flex:1}
+header.top button{background:rgba(255,255,255,.18);color:inherit;border:0;border-radius:8px;padding:6px 10px;font-size:14px}
+main{padding:12px 12px 90px;max-width:760px;margin:auto}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:12px;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:10px;text-align:left;color:inherit;font:inherit}
+.kpi b{display:block;font-size:26px;line-height:1.1}.kpi span{font-size:12.5px;color:var(--mut)}
+h2{font-size:15px;margin:16px 4px 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+input,select{width:100%;font:inherit;padding:11px;border:1px solid var(--ln);border-radius:10px;background:var(--card);color:var(--tx)}
+button.pri{width:100%;padding:13px;border:0;border-radius:10px;background:var(--acc);color:#fff;font:600 16px inherit}
+.row{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:10px 12px;margin:0 0 8px;color:inherit;font:inherit}
+.row .t{display:flex;justify-content:space-between;gap:8px;font-weight:600}.row .s{font-size:13px;color:var(--mut);margin-top:2px}
+.chip{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.CADUCADO{background:#F4CCCC;color:#990000}.INMINENTE{background:#FCE5CD;color:#8A4500}.ALTO{background:#FFF2CC;color:#7a5b00}.BAJO{background:#D9EAD3;color:#274e13}.NA{background:#e5e7eb;color:#374151}
+nav.tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--ln);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav.tabs button{flex:1;padding:12px 4px;border:0;background:none;color:var(--mut);font:600 13px inherit}nav.tabs button.on{color:var(--acc)}
+.f{display:flex;gap:8px;margin:0 0 8px}.f>*{flex:1}
+details{background:var(--card);border:1px solid var(--ln);border-radius:12px;margin:0 0 8px;padding:0 12px}
+summary{padding:12px 0;font-weight:600;cursor:pointer}
+.kv{padding:7px 0;border-top:1px solid var(--ln)}.kv small{display:block;color:var(--mut);font-size:12px}.kv div{white-space:pre-wrap;word-break:break-word}
+.mut{color:var(--mut);font-size:13px}.err{color:#b42318;margin:8px 0}
+.back{background:none;border:0;color:var(--acc);font:600 16px inherit;padding:4px 0 10px}
+</style></head><body>
+<header class="top"><h1 id="ttl">Consulta PASF</h1><button id="lock" hidden>Bloquear</button></header>
+<main id="app"></main>
+<nav class="tabs" id="tabs" hidden><button data-t="home" class="on">Inicio</button><button data-t="find">Buscar</button><button data-t="term">Plazos</button></nav>
+<script>
+const pad = n => String(n).padStart(2, '0');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const noacc = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+/* ---------- fechas ---------- */
+const TODAY = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const validYMD = (y, m, d) => { const t = new Date(y, m - 1, d); return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d; };
+function parseDate(s) {
+  s = String(s ?? '').trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return validYMD(+m[1], +m[2], +m[3]) ? `${m[1]}-${pad(m[2])}-${pad(m[3])}` : null;
+  if ((m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) return validYMD(+m[3], +m[2], +m[1]) ? `${m[3]}-${pad(m[2])}-${pad(m[1])}` : null;
+  return null;
+}
+const isoToDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+const dateToISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const isoText = v => String(v ?? '').replace(/(?<![\d/.])(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})(?!\d)/g, (m0, d, mo, y) => validYMD(+y, +mo, +d) ? `${y}-${pad(mo)}-${pad(d)}` : m0);
+const fmtDate = v => String(v ?? '');  // las fechas se muestran y se escriben como AAAA-MM-DD
+function allDates(v) {
+  const out = [], re = /(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\/\d{1,2}\/\d{4})/g; let m; const s = String(v ?? '');
+  while ((m = re.exec(s))) { const i = parseDate(m[0]); if (i) out.push(i); }
+  return out.sort();
+}
+const monthsDiff = (a, b) => { let m = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth(); if (b.getDate() < a.getDate()) m--; return m; };
+function addMonthsISO(iso, n) {
+  const d = isoToDate(iso), day = d.getDate(), t = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  t.setDate(Math.min(day, new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate())); return dateToISO(t);
+}
+const isoOf = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function calcRow(mk, row) {
+  const sc = SCHEMA[mk], done = String(row[sc.done] ?? '').toUpperCase() === 'SI', out = { riskDate: '', risk: '', left: '', days: null, inact: '', antig: '', cdLim: '', vtoD: '', vtoA: '', vtoR: '' };
+  const ds = allDates(row[sc.cad]);
+  const nt = mk === 'pasf' ? allDates(row.AO) : [], salvado = nt.length && ds.length && nt[nt.length - 1] <= ds[0];
+  if (salvado) { out.risk = 'N/A'; out.left = 'N/A'; }
+  else if (ds.length && (!done || (mk === 'pasf' && ds[ds.length - 1] < isoOf(TODAY())))) {
+    const cad = ds[ds.length - 1], cd = isoToDate(cad), t = TODAY();
+    out.riskDate = ds.map(d => addMonthsISO(d, -12)).join(' / '); out.days = Math.round((cd - t) / 864e5);
+    if (t > cd) { out.risk = 'CADUCADO'; out.left = 'CADUCADO'; }
+    else { const m = monthsDiff(t, cd); out.left = m + (m === 1 ? ' MES' : ' MESES'); out.risk = m < 12 ? 'INMINENTE' : m < 18 ? 'ALTO' : 'BAJO'; }
+  }
+  else if (done) { out.risk = 'N/A'; out.left = 'N/A'; }
+  if (String(row.CAD_SN ?? '').toUpperCase() === 'NO' && out.risk === 'CADUCADO') { out.risk = 'N/A'; out.left = 'N/A'; } /* marcado manualmente como NO caducado: prevalece sobre el cálculo por fechas */
+  if (mk === 'pasf') { const l = k => allDates(row[k]).slice(-1)[0] || ''; if (l('AA')) out.vtoD = addHabiles(l('AA'), 5); const ba = l('NOT_CIERRE') || l('AC'); if (ba) out.vtoA = addHabiles(ba, 10); if (String(row.AJ ?? '').toUpperCase().startsWith('SANCI') && l('AO')) out.vtoR = addHabiles(l('AO'), 5); }
+  if (mk === 'pasf') { const fn = allDates(row.CD_FNOT); if (fn.length) out.cdLim = addMonthsISO(fn[fn.length - 1], 3); }
+  if (mk === 'ant') { const a = allDates(row.G); if (a.length) out.antig = (m => m + (m === 1 ? ' mes' : ' meses'))(monthsDiff(isoToDate(a[a.length - 1]), TODAY())); }
+  if (mk === 'ant') { const u = allDates(row.W); out.inact = done ? 'N/A' : (u.length ? (m => m + (m === 1 ? ' mes' : ' meses'))(monthsDiff(isoToDate(u[u.length - 1]), TODAY())) : ''); }
+  return out;
+}
+const isActive = (mk, r) => String(r[SCHEMA[mk].done] ?? '').toUpperCase() !== 'SI';
+const _fest = {};
+function pascua(y) { const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), t = h + l - 7 * m + 114; return new Date(y, Math.floor(t / 31) - 1, (t % 31) + 1); }
+const sumD = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const aLunes = d => { const w = d.getDay(); return w === 1 ? d : sumD(d, (8 - w) % 7 || 7); };
+function festivos(y) {
+  if (_fest[y]) return _fest[y]; const S2 = new Set(), add = d => S2.add(dateToISO(d)), P = pascua(y);
+  [[0, 1], [4, 1], [6, 20], [7, 7], [11, 8], [11, 25]].forEach(([m, d]) => add(new Date(y, m, d)));
+  [[0, 6], [2, 19], [5, 29], [7, 15], [9, 12], [10, 1], [10, 11]].forEach(([m, d]) => add(aLunes(new Date(y, m, d))));
+  add(sumD(P, -3)); add(sumD(P, -2)); add(aLunes(sumD(P, 39))); add(aLunes(sumD(P, 60))); add(aLunes(sumD(P, 68)));
+  return (_fest[y] = S2);
+}
+const esHabil = d => { const w = d.getDay(); return w !== 0 && w !== 6 && !festivos(d.getFullYear()).has(dateToISO(d)) && !((S.data?.cfg?.nh) || []).includes(dateToISO(d)); };
+function addHabiles(iso, n) { let d = isoToDate(iso), c = 0; while (c < n) { d = sumD(d, 1); if (esHabil(d)) c++; } return dateToISO(d); }
+function habilesHasta(desde, hasta) { // días hábiles en (desde, hasta]; negativo si hasta < desde
+  if (hasta === desde) return 0; const neg = hasta < desde, a = neg ? hasta : desde, b = neg ? desde : hasta; let d = isoToDate(a), e = isoToDate(b), c = 0; while (d < e) { d = sumD(d, 1); if (esHabil(d)) c++; } return neg ? -c : c;
+}
+const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+const SCHEMA = {"pasf":{"label":"PASF","key":"C","done":"BQ","cad":"R","sust":"I","estado":"BE","cols":[{"k":"A","h":"No.","t":"auto"},{"k":"B","h":"DEPENDENCIA QUE TRAMITA","t":"pick:depTramita"},{"k":"C","h":"N° DE EXPEDIENTE","t":"text"},{"k":"D","h":"TIPO DE EXPEDIENTE","t":"pick:tipoexp"},{"k":"E","h":"# OFICIO TRASLADO/SOLICITUD A COLEGIADA","t":"text"},{"k":"F","h":"FECHA DE OFICIO TRASLADO A COLEGIADA","t":"datefree"},{"k":"G","h":"# OFICIO(OS) ASIGNACIÓN SUSTANCIADOR(ES)","t":"text"},{"k":"H","h":"FECHA OFICIO(OS) ASIGNACIÓN SUSTANCIADOR(ES)","t":"datefree"},{"k":"I","h":"SUSTANCIADOR ACTUAL","t":"list:sust"},{"k":"J","h":"DIRECTIVO PONENTE","t":"list:ponente"},{"k":"K","h":"ENTIDAD","t":"multi:entidad"},{"k":"L","h":"PRESUNTOS(AS) IMPLICADOS(AS)","t":"multi:implicado"},{"k":"M","h":"CARGO DEL(A) PRESUNTO IMPLICADO(A)","t":"multi:cargo"},{"k":"N","h":"ORIGEN","t":"pick:origen"},{"k":"O","h":"BREVE DESCRIPCIÓN DE LOS HECHOS","t":"long"},{"k":"P","h":"CAUSAL","t":"pick:causal"},{"k":"MULT","h":"¿VARIAS CAUSALES / FECHAS?","t":"sino"},{"k":"Q","h":"FECHA DE OCURRENCIA DE LOS HECHOS","t":"date"},{"k":"R","h":"FECHA DE CADUCIDAD (3 AÑOS)","t":"date"},{"k":"S","h":"FECHA DE RIESGO DE CADUCIDAD","t":"calc"},{"k":"T","h":"RIESGO DE CADUCIDAD","t":"calc"},{"k":"U","h":"TIEMPO RESTANTE","t":"calc"},{"k":"V","h":"FECHA DE INICIO AVERIGUACIONES PRELIMINARES","t":"date"},{"k":"W","h":"# AUTO APERTURA Y FORMULACIÓN DE CARGOS","t":"text"},{"k":"X","h":"FECHA AUTO DE APERTURA Y FORMULACIÓN DE CARGOS","t":"date"},{"k":"Y","h":"AUTO APERTURA Y FORMULACIÓN DE CARGOS NOTIFICADO?","t":"sino"},{"k":"Z","h":"FECHA SOLICITUD NOTIFICACIÓN APERTURA Y FORMULACIÓN DE CARGOS","t":"date"},{"k":"AA","h":"FECHA NOTIFICACIÓN APERTURA Y FORMULACIÓN DE CARGOS","t":"date"},{"k":"AB","h":"FECHA INICIO PERIODO PROBATORIO","t":"date"},{"k":"AC","h":"FECHA CIERRE PERIODO PROBATORIO (PRONUNCIAMIENTO SOBRE PRUEBAS)","t":"date"},{"k":"AD","h":"FECHA PRÁCTICA DE ULTIMA PRUEBA","t":"date"},{"k":"AE","h":"ALEGATOS?","t":"sino"},{"k":"AF","h":"FECHA PRESENTACIÓN ALEGATOS","t":"datefree"},{"k":"AG","h":"DECISIÓN?","t":"sino"},{"k":"AH","h":"# RESOLUCIÓN","t":"text"},{"k":"AI","h":"FECHA DECISIÓN","t":"datefree"},{"k":"AJ","h":"SENTIDO DE LA DECISIÓN","t":"list:sentido"},{"k":"AK","h":"TIPO DE SANCIÓN","t":"list:sancion"},{"k":"AL","h":"CUANTÍA MULTA","t":"num"},{"k":"AM","h":"DECISIÓN NOTIFICADA?","t":"sino"},{"k":"AN","h":"FECHA SOLICITUD NOTIFICACIÓN DECISIÓN","t":"datefree"},{"k":"AO","h":"FECHA NOTIFICACIÓN DE LA DECISIÓN","t":"datefree"},{"k":"AP","h":"RECURSOS","t":"sino"},{"k":"AQ","h":"FECHA PRESENTACIÓN RECURSOS","t":"datefree"},{"k":"AR","h":"RECURSO REPOSICIÓN RESUELTO?","t":"sino"},{"k":"AS","h":"# RESOLUCIÓN RESUELVE RECURSO REPOSICIÓN","t":"text"},{"k":"AT","h":"FECHA RES RESUELVE RECURSO REPOSICIÓN","t":"datefree"},{"k":"AU","h":"SENTIDO AUTO RESUELVE RECURSO REPOSICIÓN","t":"list:srec"},{"k":"AV","h":"REPOSICIÓN MODIFICA CUANTÍA","t":"sino"},{"k":"AW","h":"FECHA NOT RECURSO REPOSICIÓN","t":"datefree"},{"k":"AX","h":"RECURSO APELACIÓN RESUELTO?","t":"sino"},{"k":"AY","h":"# RESOLUCIÓN RESUELVE RECURSO APELACIÓN","t":"text"},{"k":"AZ","h":"FECHA AUTO RESUELVE RECURSO APELACIÓN","t":"datefree"},{"k":"BA","h":"SENTIDO AUTO RESUELVE RECURSO APELACIÓN","t":"list:srec"},{"k":"BB","h":"APELACIÓN MODIFICA CUANTÍA","t":"sino"},{"k":"BC","h":"CUANTÍA DEFINITIVA MULTA","t":"num"},{"k":"BD","h":"FECHA EJECUTORIA DECISIÓN","t":"datefree"},{"k":"BE","h":"ESTADO ACTUAL PROCESO","t":"list:estado"},{"k":"BF","h":"VALOR RECAUDADO","t":"num"},{"k":"BG","h":"FECHA DE ARCHIVO POR PAGO","t":"datefree"},{"k":"BH","h":"TRASLADO A COBRO COACTIVO","t":"sino"},{"k":"BI","h":"FECHA TRASLADO A COBRO COACTIVO","t":"datefree"},{"k":"BJ","h":"ULTIMA ACTUACIÓN","t":"long"},{"k":"BK","h":"FECHA ULTIMA ACTUACIÓN","t":"date"},{"k":"BL","h":"OBSERVACIONES DEL SUSTANCIADOR","t":"long"},{"k":"BM","h":"COMPROMISO","t":"pick:compP"},{"k":"BN","h":"EXPEDIENTE VERIFICADO?","t":"sino"},{"k":"BO","h":"FECHA ULTIMA REVISIÓN EXPEDIENTE","t":"date"},{"k":"BP","h":"OBSERVACIONES REVISIÓN","t":"long"},{"k":"BQ","h":"TRÁMITE CULMINADO?","t":"sino"},{"k":"BS","h":"FECHA DE CUMPLIMIENTO DEL COMPROMISO","t":"date"},{"k":"CD_SI","h":"¿SE DECLARÓ LA CADUCIDAD / PÉRDIDA DE LA FACULTAD SANCIONATORIA?","t":"sino"},{"k":"CD_RES","h":"# RESOLUCIÓN QUE DECLARA LA CADUCIDAD","t":"text"},{"k":"CD_FRES","h":"FECHA RESOLUCIÓN QUE DECLARA LA CADUCIDAD","t":"datefree"},{"k":"CD_FNOT","h":"FECHA NOTIFICACIÓN RESOLUCIÓN QUE DECLARA LA CADUCIDAD","t":"date"},{"k":"CD_LIM","h":"FECHA LÍMITE REMISIÓN A CONTROL INTERNO DISCIPLINARIO (3 MESES)","t":"calc"},{"k":"CD_REM","h":"FECHA REMISIÓN A CONTROL INTERNO DISCIPLINARIO","t":"date"},{"k":"CD_OF","h":"# OFICIO DE REMISIÓN A CONTROL INTERNO","t":"text"},{"k":"NOT_CIERRE","h":"FECHA NOTIFICACIÓN AUTO QUE CIERRA PERIODO PROBATORIO Y CORRE TRASLADO PARA ALEGAR","t":"date"},{"k":"FPD","h":"FECHA EN QUE QUEDÓ PARA DECIDIR","t":"date"},{"k":"TRAS_SUP","h":"FECHA TRASLADO/RECIBO DE LA APELACIÓN POR EL SUPERIOR","t":"datefree"},{"k":"CAD_SN","h":"¿CADUCADO?","t":"sino"},{"k":"CAD_CAUSAL","h":"CAUSAL DE LA CADUCIDAD","t":"list:causalcad"},{"k":"DESC_SI","h":"¿SE PRESENTARON DESCARGOS?","t":"sino"},{"k":"DESC_F","h":"FECHA DE RECEPCIÓN DE LOS DESCARGOS","t":"datefree"},{"k":"DESC_RAD","h":"RADICADO SIGEDOC DE ENTRADA DE LOS DESCARGOS","t":"text"},{"k":"AF_RAD","h":"RADICADO SIGEDOC DE ENTRADA DE LOS ALEGATOS","t":"text"},{"k":"AQ_RAD","h":"RADICADO SIGEDOC DE ENTRADA DE LOS RECURSOS","t":"text"},{"k":"VTO_D","h":"FECHA DE VENCIMIENTO DEL TÉRMINO PARA DESCARGOS (5 DÍAS HÁBILES)","t":"calc"},{"k":"VTO_A","h":"FECHA DE VENCIMIENTO DEL TÉRMINO PARA ALEGATOS (10 DÍAS HÁBILES; ESTIMADA CON LA FECHA DEL AUTO HASTA REGISTRAR SU NOTIFICACIÓN)","t":"calc"},{"k":"VTO_R","h":"FECHA DE VENCIMIENTO DEL TÉRMINO PARA RECURSOS (5 DÍAS HÁBILES)","t":"calc"}],"sections":[["Identificación",["B","C","BE","D","E","F","G","H","I","J","K","L","M","N","O","P"]],["Caducidad",["MULT","Q","R","S","T","CAD_SN","CAD_CAUSAL","U","V"]],["Apertura y pruebas",["W","X","Y","Z","AA","VTO_D","DESC_SI","DESC_F","DESC_RAD","AB","AC","NOT_CIERRE","VTO_A","AD","AE","AF","AF_RAD"]],["Decisión",["FPD","AG","AH","AI","AJ","AK","AL","AM","AN","AO","VTO_R"]],["Recursos",["AP","AQ","AQ_RAD","AR","AS","AT","AU","AV","AW","AX","TRAS_SUP","AY","AZ","BA","BB"]],["Ejecutoria y cobro",["BC","BD","BF","BG","BH","BI"]],["Seguimiento",["BJ","BK","BL","BM","BS","BN","BO","BP","BQ"]],["Caducidad declarada",["CD_SI","CD_RES","CD_FRES","CD_FNOT","CD_LIM","CD_REM","CD_OF"]]]},"ant":{"label":"Antecedentes","key":"C","done":"AD","cad":"O","sust":"H","estado":null,"cols":[{"k":"A","h":"No.","t":"auto"},{"k":"B","h":"DEPENDENCIA SOLICITANTE","t":"pick:depSolicita"},{"k":"C","h":"CONSECUTIVO COLEGIADA","t":"text"},{"k":"D","h":"# OFICIO TRASLADO/SOLICITUD A COLEGIADA","t":"text"},{"k":"E","h":"FECHA DE OFICIO TRASLADO/SOLICITUD A COLEGIADA","t":"date"},{"k":"F","h":"# OFICIO(OS) ASIGNACIÓN SUSTANCIADOR(ES)","t":"text"},{"k":"G","h":"FECHA OFICIO(OS) ASIGNACIÓN SUSTANCIADOR(ES)","t":"datefree"},{"k":"H","h":"SUSTANCIADOR ACTUAL ASIGNADO","t":"list:sust"},{"k":"I","h":"DIRECTIVO PONENTE","t":"list:ponente"},{"k":"J","h":"ENTIDAD AFECTADA","t":"multi:entidad"},{"k":"K","h":"ORIGEN","t":"pick:origen"},{"k":"L","h":"BREVE DESCRIPCIÓN DE LOS HECHOS","t":"long"},{"k":"M","h":"CAUSAL","t":"pick:causal"},{"k":"MULT","h":"¿VARIAS CAUSALES / FECHAS?","t":"sino"},{"k":"N","h":"FECHA DE OCURRENCIA DE LOS HECHOS","t":"date"},{"k":"O","h":"FECHA DE CADUCIDAD (3 AÑOS)","t":"date"},{"k":"P","h":"FECHA RIESGO DE CADUCIDAD","t":"calc"},{"k":"Q","h":"RIESGO DE CADUCIDAD","t":"calc"},{"k":"R","h":"TIEMPO RESTANTE","t":"calc"},{"k":"S","h":"ANTIGÜEDAD ASIGNACIÓN","t":"calc"},{"k":"T","h":"AVERIGUACIÓN PRELIMINAR INICIADA","t":"sino"},{"k":"U","h":"FECHA DE INICIO AVERIGUACIÓN PRELIMINAR","t":"date"},{"k":"V","h":"ULTIMA ACTUACIÓN","t":"long"},{"k":"W","h":"FECHA ULTIMA ACTUACIÓN","t":"date"},{"k":"X","h":"TIEMPO INACTIVIDAD","t":"calc"},{"k":"Y","h":"OBSERVACIONES DEL SUSTANCIADOR","t":"long"},{"k":"Z","h":"COMPROMISO","t":"pick:compA"},{"k":"AA","h":"REVISADO CMTO","t":"sino"},{"k":"AB","h":"FECHA ULTIMA REVISIÓN EXP","t":"date"},{"k":"AC","h":"OBSERVACIONES REVISIÓN","t":"long"},{"k":"AD","h":"CONCLUIDO","t":"sino"},{"k":"AE","h":"FECHA DE CUMPLIMIENTO DEL COMPROMISO","t":"date"},{"k":"FRESP","h":"FECHA RESPUESTA A LAS AVERIGUACIONES PRELIMINARES (LISTO PARA DECIDIR)","t":"date"},{"k":"CAD_SN","h":"¿CADUCADO?","t":"sino"},{"k":"CAD_CAUSAL","h":"CAUSAL DE LA CADUCIDAD","t":"list:causalcad"}],"sections":[["Identificación",["B","C","D","E","F","G","H","I","J","K","L","M"]],["Caducidad",["MULT","N","O","P","Q","CAD_SN","CAD_CAUSAL","R"]],["Seguimiento",["S","T","U","FRESP","V","W","X","Y","Z","AE","AA","AB","AC","AD"]]]}};
+const S = { data: null, mods: ['pasf', 'ant'], tab: 'home', mk: 'pasf', q: '', act: 'act', risk: '', sust: '', cad: '', file: '', hid: 0 };
+const MODS = S.mods, MS_PONK = mk => mk === 'ant' ? 'I' : 'J';
+const CALCMAP = { pasf: { S: 'riskDate', T: 'risk', U: 'left', CD_LIM: 'cdLim', VTO_D: 'vtoD', VTO_A: 'vtoA', VTO_R: 'vtoR' }, ant: { P: 'riskDate', Q: 'risk', R: 'left', X: 'inact', S: 'antig' } };
+const $ = s => document.querySelector(s);
+const colOf = (mk, k) => SCHEMA[mk].cols.find(c => c.k === k);
+const getVal = (mk, r, k) => { const cm = CALCMAP[mk][k]; return cm ? (r._c?.[cm] ?? '') : (r[k] ?? ''); };
+const rk = r => r._c?.risk || 'N/A', chip = v => `<span class="chip ${v === 'N/A' || !v ? 'NA' : v}">${esc(v || '—')}</span>`;
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function decrypt(p, pass) {
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64d(p.salt), iterations: 600000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(p.iv) }, key, b64d(p.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function readPayload(txt) {
+  const m = txt.match(/<script[^>]*id="payload"[^>]*>([\s\S]*?)<\/script>/);
+  return JSON.parse(m ? m[1] : txt);
+}
+function load(d) {
+  S.data = d; let n = 1;
+  MODS.forEach(mk => { const rows = d.modules[mk].rows; rows.forEach(r => { r._id = n++; r._c = calcRow(mk, r); }); });
+  S.data.hist = Array.isArray(d.hist) ? d.hist : [];
+}
+function lock() { S.data = null; S.q = ''; $('#tabs').hidden = true; $('#lock').hidden = true; $('#ttl').textContent = 'Consulta PASF'; viewUnlock(); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) S.hid = Date.now(); else if (S.data && S.hid && Date.now() - S.hid > 120000) lock(); });
+$('#lock').onclick = lock;
+$('#tabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.tab = b.dataset.t; [...$('#tabs').children].forEach(x => x.classList.toggle('on', x === b)); render(); };
+
+function viewUnlock(msg) {
+  $('#app').innerHTML = `<div class="card"><p><b>Solo consulta.</b> Elige el archivo de datos y escribe tu clave. Nada se guarda en el teléfono ni se envía a internet.</p>
+  <p><input type="file" id="fl"></p><p><input type="password" id="pw" placeholder="Clave" autocomplete="off"></p>
+  <p class="err" id="er">${esc(msg || '')}</p><button class="pri" id="go">Abrir</button><p class="mut" id="fi"></p></div>
+  <p class="mut" style="padding:0 6px">El archivo es el mismo <i>Control_Sancionatorios.html</i> que guardas en la USB (puedes subirlo a tu OneDrive y elegirlo desde aquí). La app se bloquea sola tras 2 minutos fuera de ella.</p>`;
+  $('#fl').onchange = () => { const f = $('#fl').files[0]; $('#fi').textContent = f ? f.name + ' · ' + (f.size / 1048576).toFixed(1) + ' MB' : ''; };
+  $('#go').onclick = async () => {
+    const f = $('#fl').files[0], pw = $('#pw').value; if (!f) return void ($('#er').textContent = 'Elige primero el archivo.'); if (!pw) return void ($('#er').textContent = 'Escribe la clave.');
+    $('#go').disabled = true; $('#er').textContent = 'Descifrando…';
+    try {
+      const p = readPayload(await f.text()); const d = p.enc ? await decrypt(p, pw) : p;
+      if (!d || !d.modules) throw new Error('formato');
+      S.file = f.lastModified ? new Date(f.lastModified).toLocaleString('es-CO') : ''; load(d); $('#pw').value = '';
+      S.tab = 'home'; [...$('#tabs').children].forEach((x, i) => x.classList.toggle('on', i === 0)); $('#tabs').hidden = false; $('#lock').hidden = false; render();
+    } catch (e) { $('#go').disabled = false; $('#er').textContent = e && e.name === 'OperationError' ? 'Clave incorrecta.' : 'No pude leer ese archivo (¿es el archivo de datos correcto?).'; }
+  };
+}
+const rowsOf = mk => S.data.modules[mk].rows;
+const cadSN = r => String(r.CAD_SN ?? '').toUpperCase();
+function render() { if (!S.data) return; if (S.tab === 'home') viewHome(); else if (S.tab === 'find') viewFind(); else viewTerm(); window.scrollTo(0, 0); }
+function viewHome() {
+  $('#ttl').textContent = 'Inicio'; const hoy = todayISO();
+  const blk = mk => { const R = rowsOf(mk).filter(r => isActive(mk, r)), c = k => R.filter(r => rk(r) === k).length; const sc = SCHEMA[mk];
+    return `<h2>${esc(sc.label)}</h2><div class="grid"><button class="kpi" data-go="${mk}||act"><b>${R.length}</b><span>Activos</span></button><button class="kpi" data-go="${mk}|CADUCADO|act"><b>${c('CADUCADO')}</b><span>Caducados</span></button><button class="kpi" data-go="${mk}|INMINENTE|act"><b>${c('INMINENTE')}</b><span>Inminentes (&lt;12 meses)</span></button><button class="kpi" data-go="${mk}|ALTO|act"><b>${c('ALTO')}</b><span>Riesgo alto (12–18 meses)</span></button></div>`; };
+  const sm = MODS.reduce((n, mk) => n + rowsOf(mk).filter(r => !r.CAD_SN && rk(r) === 'CADUCADO').length, 0);
+  $('#app').innerHTML = `<p class="mut" style="margin:4px">Hoy: ${hoy}${S.file ? ' · archivo guardado el ' + esc(S.file) : ''}</p>` + blk('pasf') + blk('ant') + (sm ? `<div class="card" style="margin-top:12px">⚠ ${sm} vencido(s) sin marcar «¿Caducado?» SI/NO (se corrige en la app de escritorio).</div>` : '');
+  $('#app').querySelectorAll('[data-go]').forEach(b => b.onclick = () => { const [mk, rg] = b.dataset.go.split('|'); S.mk = mk; S.risk = rg; S.act = 'act'; S.q = ''; S.tab = 'find'; [...$('#tabs').children].forEach(x => x.classList.toggle('on', x.dataset.t === 'find')); render(); });
+}
+function viewFind() {
+  $('#ttl').textContent = 'Buscar'; const sc = SCHEMA[S.mk], sustL = [...new Set(rowsOf(S.mk).map(r => r[sc.sust]).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  $('#app').innerHTML = `<div class="f"><select id="mk">${MODS.map(m => `<option value="${m}" ${m === S.mk ? 'selected' : ''}>${esc(SCHEMA[m].label)}</option>`).join('')}</select><select id="ac"><option value="act" ${S.act === 'act' ? 'selected' : ''}>Activos</option><option value="all" ${S.act === 'all' ? 'selected' : ''}>Todos</option></select></div>
+  <input type="search" id="q" placeholder="Buscar en todos los campos…" value="${esc(S.q)}" style="margin-bottom:8px">
+  <div class="f"><select id="rg"><option value="">Riesgo: todos</option>${['CADUCADO', 'INMINENTE', 'ALTO', 'BAJO'].map(x => `<option ${x === S.risk ? 'selected' : ''}>${x}</option>`).join('')}</select><select id="su"><option value="">Sustanciador: todos</option>${sustL.map(x => `<option ${x === S.sust ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></div>
+  <div id="ls"></div>`;
+  const list = () => { S.q = $('#q').value; const q = noacc(S.q).trim(), est = sc.estado;
+    const R = rowsOf(S.mk).filter(r => (S.act === 'all' || isActive(S.mk, r)) && (!S.risk || rk(r) === S.risk) && (!S.sust || r[sc.sust] === S.sust) && (!q || q.split(/\s+/).every(w => (r._h ??= noacc(SCHEMA[S.mk].cols.map(c => getVal(S.mk, r, c.k)).join(' | '))).includes(w))));
+    $('#ls').innerHTML = `<p class="mut">${R.length} resultado(s)${R.length > 150 ? ' · se muestran 150, afina la búsqueda' : ''}</p>` + R.slice(0, 150).map(r => `<button class="row" data-id="${r._id}"><div class="t"><span>${esc(r[sc.key])}</span>${chip(rk(r))}</div><div class="s">${esc(r[sc.sust] ?? '')}${est && r[est] ? ' · ' + esc(r[est]) : ''}</div><div class="s">Caducidad: ${esc(allDates(r[sc.cad]).slice(-1)[0] || '—')}</div></button>`).join('');
+    $('#ls').querySelectorAll('.row').forEach(b => b.onclick = () => ficha(S.mk, Number(b.dataset.id))); };
+  $('#mk').onchange = () => { S.mk = $('#mk').value; S.risk = ''; S.sust = ''; viewFind(); }; $('#ac').onchange = () => { S.act = $('#ac').value; list(); };
+  $('#rg').onchange = () => { S.risk = $('#rg').value; list(); }; $('#su').onchange = () => { S.sust = $('#su').value; list(); }; $('#q').oninput = list; list();
+}
+function ficha(mk, id) {
+  const sc = SCHEMA[mk], r = rowsOf(mk).find(x => x._id === id); if (!r) return; $('#ttl').textContent = String(r[sc.key] ?? '');
+  const secs = sc.sections.map(([n, ks], i) => { const kv = ks.map(k => { const c = colOf(mk, k); if (!c) return ''; const v = String(getVal(mk, r, k) ?? '').trim(); return v ? `<div class="kv"><small>${esc(c.h)}</small><div>${esc(v)}</div></div>` : ''; }).join('');
+    return kv ? `<details ${i < 2 ? 'open' : ''}><summary>${esc(n)}</summary>${kv}</details>` : ''; }).join('');
+  const H = S.data.hist.filter(h => h.m === mk && h.e === r[sc.key]).sort((a, b) => String(b.f).localeCompare(String(a.f)));
+  const hh = H.length ? `<details><summary>Historial de actuaciones (${H.length})</summary>${H.map(h => `<div class="kv"><small>${esc(h.f)}</small><div>${esc(h.t)}</div></div>`).join('')}</details>` : '';
+  $('#app').innerHTML = `<button class="back" id="bk">‹ Volver</button><div class="card"><div class="t" style="display:flex;justify-content:space-between;gap:8px"><b>${esc(r[sc.key])}</b>${chip(rk(r))}</div><div class="mut">${esc(r[sc.sust] ?? '')}${sc.estado && r[sc.estado] ? ' · ' + esc(r[sc.estado]) : ''}</div></div>${secs}${hh}<p class="mut">Los documentos PDF no están disponibles en esta versión de consulta.</p>`;
+  $('#bk').onclick = () => { S.tab = 'find'; viewFind(); };
+}
+function viewTerm() {
+  $('#ttl').textContent = 'Plazos'; const hoy = todayISO(), T = [];
+  const add = (mk, r, k, iso) => { if (!iso) return; const d = Math.round((isoToDate(iso) - isoToDate(hoy)) / 864e5); T.push({ mk, r, h: colOf(mk, k).h, iso, d }); };
+  rowsOf('pasf').forEach(r => { if (!isActive('pasf', r)) return; ['VTO_D', 'VTO_A', 'VTO_R', 'CD_LIM'].forEach(k => { if (colOf('pasf', k)) add('pasf', r, k, getVal('pasf', r, k)); }); });
+  MODS.forEach(mk => rowsOf(mk).forEach(r => { if (!isActive(mk, r) || !['INMINENTE', 'CADUCADO'].includes(rk(r))) return; if (rk(r) === 'INMINENTE') add(mk, r, SCHEMA[mk].cad, allDates(r[SCHEMA[mk].cad]).slice(-1)[0]); }));
+  T.sort((a, b) => a.d - b.d); const win = T.filter(x => x.d >= -30 && x.d <= 60);
+  $('#app').innerHTML = `<p class="mut" style="margin:4px">Vencidos en los últimos 30 días y los próximos 60. Fechas calculadas por la app con días hábiles y festivos de Colombia.</p>` + (win.map(x => `<button class="row" data-id="${x.r._id}" data-mk="${x.mk}"><div class="t"><span>${esc(x.r[SCHEMA[x.mk].key])}</span><span class="chip ${x.d < 0 ? 'CADUCADO' : x.d <= 7 ? 'INMINENTE' : 'BAJO'}">${x.d < 0 ? 'hace ' + -x.d + ' d' : x.d === 0 ? 'HOY' : 'en ' + x.d + ' d'}</span></div><div class="s">${esc(x.h)}</div><div class="s">${esc(x.iso)} · ${esc(x.r[SCHEMA[x.mk].sust] ?? '')}</div></button>`).join('') || '<div class="card">Sin plazos en esa ventana.</div>');
+  $('#app').querySelectorAll('.row').forEach(b => b.onclick = () => { S.tab = 'find'; ficha(b.dataset.mk, Number(b.dataset.id)); const bk = $('#bk'); if (bk) bk.onclick = () => { S.tab = 'term'; viewTerm(); }; });
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+viewUnlock();
+</script></body></html>
